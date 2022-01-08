@@ -8,7 +8,7 @@ with open('requirements.txt') as fh:
 
 setuptools.setup(
     name="RPZGen",
-    version="0.1.1",
+    version="0.1.2",
     author="M4t7e",
     license='MIT License',
     description="A generator for Response Policy Zones (RPZ)",
