@@ -13,7 +13,9 @@ class PolicyAction(Enum):
     PASSTHRU = "rpz-passthru."
     TCP_ONLY = "rpz-tcp-only."
     DROP = "rpz-drop."
-    LOCAL_DATA = "localhost."
+    LOCAL_DATA = "local-data."
+    LOCALHOST = "localhost."
+    NULL = "null."
 
 
 class RecordType(Enum):
@@ -71,6 +73,23 @@ class RPZLib:
         return network
 
     @classmethod
+    def _generate_rpz_record_raw(cls, domain: str, block_zone: bool = False,
+                                 rdata: str = "", rr_type: RecordType = None):
+        left_padding_length = (56 - len(domain))
+
+        if left_padding_length < 3:
+            left_padding_length = 3
+
+        left_padding = " " * left_padding_length
+        rdata_padding = " " * (10 - len(rr_type.name))
+
+        entry = f"{domain}{left_padding}{rr_type.name}{rdata_padding}{rdata}\n"
+        if block_zone:
+            entry += f"*.{domain}{left_padding[:-2]}{rr_type.name}{rdata_padding}{rdata}\n"
+        
+        return entry
+
+    @classmethod
     def generate_domain_entry(cls, domain: str, block_zone: bool = False,
                               policy_action: PolicyAction = PolicyAction.NXDOMAIN,
                               policy_action_local_data_type: RecordType = None, policy_action_local_data: str = None):
@@ -83,22 +102,44 @@ class RPZLib:
             if policy_action_local_data:
                 policy_action_value = policy_action_local_data
 
-        left_padding_max = 56
-        left_padding_length = (left_padding_max - len(domain))
-
-        if left_padding_length < 3:
-            left_padding_length = 3
-
-        left_padding = " " * left_padding_length
-
-        entry = f"{domain}{left_padding}{rr_type.name}     {policy_action_value}\n"
-        if block_zone:
-            entry += f"*.{domain}{left_padding[:-2]}{rr_type.name}     {policy_action_value}\n"
+        if policy_action == PolicyAction.LOCALHOST:
+            entry = cls._generate_rpz_record_raw(
+                domain=domain,
+                block_zone=block_zone,
+                rdata='127.0.0.1',
+                rr_type=RecordType.A
+            )
+            entry += cls._generate_rpz_record_raw(
+                domain=domain,
+                block_zone=block_zone,
+                rdata='::1',
+                rr_type=RecordType.AAAA
+            )
+        elif policy_action == PolicyAction.NULL:
+            entry = cls._generate_rpz_record_raw(
+                domain=domain,
+                block_zone=block_zone,
+                rdata='0.0.0.0',
+                rr_type=RecordType.A
+            )
+            entry += cls._generate_rpz_record_raw(
+                domain=domain,
+                block_zone=block_zone,
+                rdata='::',
+                rr_type=RecordType.AAAA
+            )
+        else:  
+            entry = cls._generate_rpz_record_raw(
+                domain=domain,
+                block_zone=block_zone,
+                rdata=policy_action_value,
+                rr_type=rr_type
+            )
 
         return entry
 
     @classmethod
-    def generate_network_entry(cls, network: Union[IPv4Network, IPv4Network],
+    def generate_network_entry(cls, network: Union[IPv4Network, IPv6Network],
                                policy_action: PolicyAction = PolicyAction.NXDOMAIN,
                                policy_action_local_data_type: RecordType = None, policy_action_local_data: str = None):
         raise NotImplementedError()
@@ -147,7 +188,7 @@ class RPZLib:
 
         return (
             f"$TTL {self.ttl}\n"
-            f"$ORIGIN {origin.lower()}\n"
+            f"$ORIGIN {origin}\n"
             f"@{space}IN    SOA       {mname} {email} (\n"
             f" {space}                    {self.serial}{serial_padding}; Serial Number\n"
             f" {space}                    {self.refresh}{refresh_padding}; Refresh Period\n"
@@ -170,7 +211,7 @@ class RPZLib:
         if not policy_action_local_data:
             policy_action_local_data = self.policy_action_local_data
 
-        output_stream.write(self.generate_header(origin))
+        output_stream.write(self.generate_header(origin.lower()))
         output_stream.write("\n")
 
         for entry in input_stream.readlines():

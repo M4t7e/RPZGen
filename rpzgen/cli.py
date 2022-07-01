@@ -43,11 +43,11 @@ def get_parser():
 
 def run():
     def sigint_handler(signal_received, frame):
-        exit(130)
+        sys.exit(130)
 
     def sigpipe_handler(signal_received, frame):
         output_stream.flush()
-        exit(0)
+        sys.exit(0)
 
     signal(SIGINT, sigint_handler)
     signal(SIGPIPE, sigpipe_handler)
